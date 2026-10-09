@@ -1,0 +1,43 @@
+# Hard filter rules. These run before any AI call. (Rules are enforced in E5; loaded and validated now.)
+
+location:
+  allow_remote_us: true
+  # Hybrid is fine within reach of home base
+  hybrid_metros: ["Milwaukee", "Madison", "Chicago"]
+
+comp:
+  # Annual base floor in USD. Jobs listing a max below this get dropped.
+  # Jobs with no comp listed are kept.
+  floor_usd: 120000
+
+titles:
+  include_keywords:
+    - implementation
+    - delivery
+    - professional services
+    - solutions
+    - program manager
+    - technical program
+    - product owner
+    - customer success
+    - deployment
+    - conversion
+  exclude_keywords:
+    - intern
+    - junior
+    - associate
+    - sales development
+    - account executive
+
+exclusions:
+  # Phrases in a job description that knock it out
+  description_phrases:
+    - "must relocate"
+    - "relocation required"
+    - "p&l ownership"
+
+# A-tier companies surface at a lower fit-score threshold (E5)
+score_thresholds:
+  A: 55
+  B: 65
+  C: 75
