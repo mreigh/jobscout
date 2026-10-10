@@ -26,13 +26,13 @@
 | JS-005 | Structured logging + per-run record (start, end, counts, errors) | P1 | S | Every run writes a row to `runs` |
 | JS-006 | Test harness with recorded HTTP fixtures; GitHub Actions CI | P1 | S | Tests run offline in CI on every push |
 
-## E1: Watchlist and ATS detection
+## E1: Watchlist and ATS detection ✅ Done Oct 10, 2026
 
 | ID | Story | Pri | Size | Acceptance criteria |
 |---|---|---|---|---|
-| JS-010 | Import watchlist from `config/watchlist.csv` (exported from the xlsx) | P0 | S | All 114 companies load with tier, segment, status, ATS |
+| JS-010 | Import watchlist from `profile/watchlist.xlsx` (or .csv) | P0 | S | All 114 companies load with tier, segment, status, ATS |
 | JS-011 | ATS detector: probe Greenhouse, Lever, Ashby, SmartRecruiters, Workable with candidate slugs derived from company name | P0 | M | Detected ATS + board token saved per company; unresolved companies listed for manual entry |
-| JS-012 | Workday detection from known careers URL patterns | P1 | M | Tenant + site captured for Workday companies |
+| JS-012 | Workday support from a pasted careers URL (tenant + site parsed, verified via API) | P1 | M | Tenant + site captured for Workday companies |
 | JS-013 | Manual override column so a hand-entered board URL always wins | P0 | S | Override respected on every run |
 | JS-014 | Weekly re-detection to catch ATS migrations and dead boards | P2 | S | Changes logged and shown in the digest health section |
 
@@ -49,7 +49,7 @@
 | JS-026 | Workday collector (paged JSON search + detail fetch) | P1 | L | Handles paging and per-tenant quirks for FIS, Associated, NM, CLA |
 | JS-027 | Generic careers-page fallback: fetch HTML, extract postings with Claude into the `RawPosting` shape | P2 | M | Works on at least 3 non-standard sites; strict rate limit |
 | JS-028 | Staffing board collectors (Kforce, Apex, Beacon Hill) filtered to WI + remote FS | P2 | M | Only local or remote fintech-relevant results kept |
-| JS-029 | Per-host rate limiting, retries with backoff, honest user agent | P0 | S | No host hit more than N times per minute; failures don't kill the run |
+| JS-029 | ✅ (shipped early in E1) Per-host rate limiting, retries with backoff, honest user agent | P0 | S | No host hit more than N times per minute; failures don't kill the run |
 
 ## E3: Email alert ingestion
 

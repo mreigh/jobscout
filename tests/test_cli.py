@@ -33,11 +33,11 @@ def test_doctor_fails_without_config_then_passes(workdir):
 
 def test_stub_command_records_a_run(workdir):
     runner.invoke(app, ["init"])
-    result = runner.invoke(app, ["detect"])
+    result = runner.invoke(app, ["digest"])
     assert result.exit_code == 0, result.output
     assert "not built yet" in result.output
     result = runner.invoke(app, ["runs"])
-    assert "detect" in result.output and "success" in result.output
+    assert "digest" in result.output and "success" in result.output
 
 
 def test_stub_command_fails_cleanly_without_config(workdir):
@@ -48,6 +48,6 @@ def test_stub_command_fails_cleanly_without_config(workdir):
 
 def test_logs_written_as_json(workdir):
     runner.invoke(app, ["init"])
-    runner.invoke(app, ["detect"])
+    runner.invoke(app, ["digest"])
     log_file = workdir / "logs" / "jobscout.log"
     assert log_file.exists()

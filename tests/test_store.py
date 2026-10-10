@@ -4,18 +4,21 @@ import pytest
 
 from jobscout.store import connect, current_version, migrate
 
-EXPECTED_TABLES = {"companies", "raw_postings", "jobs", "scores", "runs", "schema_migrations"}
+EXPECTED_TABLES = {
+    "companies", "raw_postings", "jobs", "scores", "runs", "schema_migrations", "ats_changes",
+}
+LATEST = 2
 
 
 def test_schema_created(db):
     tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert EXPECTED_TABLES <= tables
-    assert current_version(db) == 1
+    assert current_version(db) == LATEST
 
 
 def test_migrate_is_idempotent(db):
     assert migrate(db) == []
-    assert current_version(db) == 1
+    assert current_version(db) == LATEST
 
 
 def test_file_db_persists(tmp_path):

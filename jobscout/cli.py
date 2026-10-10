@@ -2,7 +2,8 @@
 
     jobscout init       set up local folders, starter config, and the database
     jobscout doctor     check config, database, and keys
-    jobscout detect     find each company's ATS            (E1)
+    jobscout watchlist  import / show target companies
+    jobscout detect     find each company's ATS
     jobscout collect    pull postings from all sources     (E2)
     jobscout run        full pipeline                       (E2-E8)
     jobscout digest     render the morning digest           (E8)
@@ -16,6 +17,7 @@ import logging
 import shutil
 from dataclasses import dataclass
 from importlib import resources
+from pathlib import Path
 
 import typer
 
@@ -24,6 +26,7 @@ from jobscout.config import ConfigError, Settings, load_filters, load_settings
 from jobscout.logging_setup import setup_logging
 from jobscout.runs import recent_runs, tracked_run
 from jobscout.store import connect, current_version
+from jobscout.watchlist import import_watchlist, load_watchlist
 
 app = typer.Typer(
     help="JobScout: watch target companies, filter hard, score honestly, attach the warm path.",
@@ -31,6 +34,10 @@ app = typer.Typer(
     add_completion=False,
 )
 log = logging.getLogger("jobscout.cli")
+
+watchlist_app = typer.Typer(help="Import and inspect the target company watchlist.",
+                            no_args_is_help=True)
+app.add_typer(watchlist_app, name="watchlist")
 
 
 @dataclass
@@ -121,10 +128,123 @@ def _stub(ctx: typer.Context, command: str, ships_in: str) -> None:
     conn.close()
 
 
+@watchlist_app.command("import")
+def watchlist_import(
+    ctx: typer.Context,
+    file: Path = typer.Option(None, "--file", "-f", help="Spreadsheet to import (.xlsx or .csv)."),
+) -> None:
+    """Load the watchlist spreadsheet into the database (safe to re-run)."""
+    s: Settings = ctx.obj.settings
+    path = file or s.watchlist_path
+    try:
+        entries = load_watchlist(path)
+    except ConfigError as e:
+        _fail(str(e))
+    conn = connect(s.db_path)
+    with tracked_run(conn, "watchlist import") as run:
+        res = import_watchlist(conn, entries)
+        run.incr("companies", len(entries))
+        run.incr("added", len(res.added))
+        run.incr("updated", len(res.updated))
+        run.incr("deactivated", len(res.deactivated))
+    conn.close()
+    typer.echo(f"Imported {len(entries)} companies from {path}")
+    typer.echo(f"  added {len(res.added)}, updated {len(res.updated)}, "
+               f"unchanged {res.unchanged}, removed {len(res.deactivated)}")
+    for name in res.deactivated:
+        typer.echo(f"  - no longer on watchlist: {name}")
+    for name in res.override_changed:
+        typer.echo(f"  ~ board URL changed, will re-detect: {name}")
+
+
+@watchlist_app.command("show")
+def watchlist_show(
+    ctx: typer.Context,
+    tier: str = typer.Option(None, "--tier", "-t", help="Only this tier (A, B, or C)."),
+    unresolved: bool = typer.Option(
+        False, "--unresolved", "-u", help="Only companies that need a board URL or a look."
+    ),
+) -> None:
+    """List watchlist companies and where their jobs are posted."""
+    conn = connect(ctx.obj.settings.db_path)
+    sql = "SELECT * FROM companies WHERE active = 1"
+    params: list = []
+    if tier:
+        sql += " AND tier = ?"
+        params.append(tier.upper())
+    if unresolved:
+        sql += (" AND (detect_status IS NULL OR detect_status IN ('not_found','needs_url','error')"
+                " OR detect_confidence = 'review')")
+    rows = conn.execute(sql + " ORDER BY tier, name", params).fetchall()
+    conn.close()
+    if not rows:
+        typer.echo("Nothing to show. Run `jobscout watchlist import` first?")
+        return
+    for r in rows:
+        where = f"{r['ats']}/{r['ats_token']}" if r["ats"] and r["ats_token"] else (r["ats"] or "-")
+        status = r["detect_status"] or "not checked"
+        if r["detect_confidence"] and r["detect_status"] in ("found", "override"):
+            status += f" ({r['detect_confidence']})"
+        jobs = f"{r['job_count']} jobs" if r["job_count"] is not None else ""
+        typer.echo(f"{r['tier']}  {r['name'][:32]:<32} {status:<22} {where[:40]:<40} {jobs}")
+        if unresolved and r["detect_detail"]:
+            msg = json.loads(r["detect_detail"]).get("message", "")
+            if msg:
+                typer.echo(f"     {msg}")
+    typer.echo(f"\n{len(rows)} companies")
+
+
+_STATUS_MARK = {"found": "+", "override": "+", "not_found": "?", "needs_url": "!", "error": "x"}
+
+
 @app.command()
-def detect(ctx: typer.Context) -> None:
-    """Find each watchlist company's applicant tracking system."""
-    _stub(ctx, "detect", "E1 / JS-011")
+def detect(
+    ctx: typer.Context,
+    company: list[str] = typer.Option(
+        None, "--company", "-c", help="Only this company (repeatable)."
+    ),
+    refresh: bool = typer.Option(False, "--refresh", help="Re-check every company."),
+    stale_days: int = typer.Option(7, help="Re-check companies last checked this many days ago."),
+    workers: int = typer.Option(6, help="Companies checked in parallel."),
+) -> None:
+    """Find each watchlist company's applicant tracking system (job board)."""
+    from jobscout.detect import run_detection
+    from jobscout.detect.detector import companies_to_detect
+    from jobscout.http import PoliteClient
+
+    s: Settings = ctx.obj.settings
+    conn = connect(s.db_path)
+    if conn.execute("SELECT COUNT(*) FROM companies").fetchone()[0] == 0:
+        conn.close()
+        _fail("No companies yet. Run `jobscout watchlist import` first.")
+    rows = companies_to_detect(conn, refresh=refresh, stale_days=stale_days, names=company)
+    if not rows:
+        typer.echo("Everything is up to date. Use --refresh to re-check all companies.")
+        conn.close()
+        return
+
+    typer.echo(f"Checking {len(rows)} companies...")
+
+    def show(r):
+        where = f"{r.ats}/{r.token}" if r.token else ""
+        conf = f" [{r.confidence}]" if r.confidence else ""
+        typer.echo(f"  {_STATUS_MARK.get(r.status, ' ')} {r.company[:32]:<32} {where}{conf}")
+
+    with tracked_run(conn, "detect") as run, PoliteClient() as http:
+        results = run_detection(conn, http, rows, workers=workers, on_result=show)
+        for r in results:
+            run.incr(r.status)
+            if r.confidence == "review":
+                run.incr("review")
+    conn.close()
+
+    counts = run.counts
+    typer.echo(
+        f"\nFound {counts['found'] + counts['override']}, needs URL {counts['needs_url']}, "
+        f"not found {counts['not_found']}, errors {counts['error']}, to review {counts['review']}"
+    )
+    if counts["needs_url"] + counts["not_found"] + counts["review"] + counts["error"]:
+        typer.echo("See what needs attention: jobscout watchlist show --unresolved")
 
 
 @app.command()

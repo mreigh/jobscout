@@ -31,6 +31,7 @@ class Settings(BaseModel):
     config_dir: Path = Path("config")
     log_dir: Path = Path("logs")
     log_level: str = "INFO"
+    watchlist_path: Path = Path("profile/watchlist.xlsx")
 
     @field_validator("log_level")
     @classmethod
@@ -54,6 +55,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         "config_dir": os.getenv("JOBSCOUT_CONFIG_DIR", "config"),
         "log_dir": os.getenv("JOBSCOUT_LOG_DIR", "logs"),
         "log_level": os.getenv("JOBSCOUT_LOG_LEVEL", "INFO"),
+        "watchlist_path": os.getenv("JOBSCOUT_WATCHLIST", "profile/watchlist.xlsx"),
     }
     try:
         return Settings(**raw)

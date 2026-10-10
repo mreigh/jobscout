@@ -213,8 +213,33 @@ jobscout doctor             # checks config, database, keys
 pytest                      # runs offline, no network
 ```
 
+### Watchlist and job-board detection
+
+Your target companies live in a spreadsheet at `profile/watchlist.xlsx` (gitignored).
+No list of your own yet? Try the scrubbed demo list in `samples/watchlist.sample.csv`.
+
+```bash
+jobscout watchlist import                 # or: --file samples/watchlist.sample.csv
+jobscout detect                           # finds each company's job board
+jobscout watchlist show --unresolved      # what needs a Board URL or a second look
+```
+
+Detection guesses board names from the company name and checks the public job-board
+APIs of Greenhouse, Lever, Ashby, SmartRecruiters, and Workable. Each hit gets a
+confidence: **confirmed** (the board's own name matches), **likely** (strong match, but
+the ATS doesn't report a name), or **review** (could be a different company).
+
+When it can't find a board (Workday, iCIMS, custom career sites), paste the careers page
+URL into the **Board URL (override)** column, re-import, and re-run `detect`. Overrides
+always win. Re-running `detect` only re-checks new, failed, or week-old results; use
+`--refresh` to re-check everything or `--company "Q2"` for one company.
+
+A weekly GitHub Action (`Live API check`) runs detection for real against the sample list,
+so API changes on the job boards' side get caught.
+
 ## Status
 
-**E0 Foundation: done.** Package, typed config, versioned SQLite schema, CLI, structured logging, run tracking, offline test harness, CI. Pipeline commands are wired up and record runs but don't do work yet.
+- **E0 Foundation: done.** Package, typed config, versioned SQLite schema, CLI, structured logging, run tracking, offline test harness, CI.
+- **E1 Watchlist + ATS detection: done.** Spreadsheet import, slug guessing, five ATS probers, confidence scoring, Workday and other overrides, ATS change history, polite rate-limited HTTP with retries, weekly live API check.
 
-**Next:** E1, watchlist import and ATS detection. See [BACKLOG.md](docs/BACKLOG.md).
+**Next:** E2, collectors that pull the actual postings. See [BACKLOG.md](docs/BACKLOG.md).
