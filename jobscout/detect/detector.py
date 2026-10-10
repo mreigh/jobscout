@@ -80,7 +80,7 @@ def confidence_for(company: str, probe: Probe) -> str:
     full = re.sub(r"[^a-z0-9]", "", re.sub(r"\(.*?\)", "", company.lower()))
     slug = probe.slug.replace("-", "")
     # Without a name to check, only trust distinctive slugs that match the whole name
-    if slug == full and len(full) >= 6:
+    if slug == full and len(full) >= 5:
         return "likely"
     return "review"
 
