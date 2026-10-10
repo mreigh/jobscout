@@ -3,6 +3,13 @@
 Each prober answers: "does board <slug> exist on this ATS, and if so, what's it
 called and how many jobs does it have?" A 404 means no. Timeouts, 429s, and 5xx
 raise TransientError (from PoliteClient) so they're never mistaken for a no.
+
+Lesson from the first live run: several ATS APIs answer 200 with an empty board
+for slugs that don't exist at all (Workable and Ashby did; SmartRecruiters is
+documented to). Only Greenhouse reliably 404s. So everywhere except Greenhouse a
+hit requires at least one open job. A real-but-empty board is a miss today and
+gets picked up on the weekly re-check once it posts something. The live check
+workflow probes a nonsense "canary" slug on every ATS to keep this honest.
 """
 
 from __future__ import annotations
@@ -47,7 +54,7 @@ def probe_greenhouse(http: PoliteClient, slug: str) -> Probe:
 def probe_lever(http: PoliteClient, slug: str) -> Probe:
     resp = http.get(f"https://api.lever.co/v0/postings/{slug}", params={"mode": "json"})
     data = _json(resp)
-    if resp.status_code != 200 or not isinstance(data, list):
+    if resp.status_code != 200 or not isinstance(data, list) or not data:
         return Probe("lever", slug, False)
     # Lever's API doesn't return the company name.
     return Probe("lever", slug, True, None, len(data))
@@ -56,9 +63,8 @@ def probe_lever(http: PoliteClient, slug: str) -> Probe:
 def probe_ashby(http: PoliteClient, slug: str) -> Probe:
     resp = http.get(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
     data = _json(resp)
-    if resp.status_code != 200 or not isinstance(data, dict) or not isinstance(
-        data.get("jobs"), list
-    ):
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if resp.status_code != 200 or not isinstance(jobs, list) or not jobs:
         return Probe("ashby", slug, False)
     return Probe("ashby", slug, True, None, len(data["jobs"]))
 
@@ -68,8 +74,6 @@ def probe_smartrecruiters(http: PoliteClient, slug: str) -> Probe:
         f"https://api.smartrecruiters.com/v1/companies/{slug}/postings", params={"limit": 1}
     )
     data = _json(resp)
-    # SmartRecruiters answers 200 with zero results for companies that don't exist,
-    # so an empty board can't be told apart from no board. Require at least one posting.
     if resp.status_code != 200 or not isinstance(data, dict) or not data.get("totalFound"):
         return Probe("smartrecruiters", slug, False)
     content = data.get("content") or [{}]
@@ -80,9 +84,9 @@ def probe_smartrecruiters(http: PoliteClient, slug: str) -> Probe:
 def probe_workable(http: PoliteClient, slug: str) -> Probe:
     resp = http.get(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
     data = _json(resp)
-    if resp.status_code != 200 or not isinstance(data, dict) or "jobs" not in data:
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if resp.status_code != 200 or not isinstance(jobs, list) or not jobs:
         return Probe("workable", slug, False)
-    jobs = data.get("jobs") or []
     return Probe("workable", slug, True, data.get("name"), len(jobs))
 
 

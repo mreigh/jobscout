@@ -109,6 +109,17 @@ def test_ashby_hit(net, http):
     assert (r.ats, r.token, r.job_count) == ("ashby", "alloy", 1)
 
 
+@pytest.mark.parametrize("url, body", [
+    (f"{WORKABLE}/q2", {"name": "Q2", "jobs": []}),           # seen live: stub for any slug
+    (f"{ASHBY}/q2", {"apiVersion": "1", "jobs": []}),
+    (f"{LEVER}/q2", []),
+])
+def test_empty_boards_are_not_hits(net, http, url, body):
+    net.get(url__startswith=url).respond(200, json=body)
+    finish(net)
+    assert detect_company(http, "Q2").status == "not_found"
+
+
 def test_smartrecruiters_empty_board_is_not_a_hit(net, http):
     finish(net)
     r = detect_company(http, "Nobody Corp")
@@ -135,7 +146,7 @@ def test_name_mismatch_flagged_for_review(net, http):
 def test_confirmed_beats_review_across_ats(net, http):
     net.get(f"{GH}/polly").respond(200, json={"name": "Polly Pocket Toys"})
     net.get(f"{GH}/polly/jobs").respond(200, json={"jobs": [], "meta": {"total": 0}})
-    net.get(f"{WORKABLE}/polly").respond(200, json={"name": "Polly", "jobs": [{}]})
+    net.get(f"{WORKABLE}/polly").respond(200, json={"name": "Polly", "jobs": [{"title": "x"}]})
     finish(net)
     r = detect_company(http, "Polly")
     assert (r.ats, r.confidence) == ("workable", "confirmed")

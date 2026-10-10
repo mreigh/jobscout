@@ -15,6 +15,7 @@ on:
       - "jobscout/http.py"
       - "samples/watchlist.sample.csv"
       - ".github/workflows/live-check.yml"
+      - ".github/scripts/**"
 
 jobs:
   detect:
@@ -28,7 +29,10 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e .
+      - name: Canary (nonsense slug must not be found anywhere)
+        run: python .github/scripts/canary.py
       - name: Detect against sample watchlist
+        if: always()
         env:
           JOBSCOUT_DB_PATH: ci-data/live.db
           JOBSCOUT_LOG_DIR: ci-logs
