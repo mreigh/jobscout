@@ -311,37 +311,40 @@ def collect(
         typer.echo("See the new ones: jobscout jobs --new --match")
 
 
-@app.command("jobs")
-def jobs_cmd(
-    ctx: typer.Context,
-    new: bool = typer.Option(False, "--new", "-n", help="Only first seen in the latest collect."),
-    days: int = typer.Option(None, "--days", "-d", help="Only first seen in the last N days."),
-    match: bool = typer.Option(
-        False, "--match", "-m",
-        help="Rough title filter using filters.yaml keywords (real filtering comes in E5).",
-    ),
-    remote: bool = typer.Option(False, "--remote", help="Only postings marked remote."),
-    company: list[str] = typer.Option(None, "--company", "-c", help="Only this company."),
-    tier: list[str] = typer.Option(None, "--tier", "-t", help="Only this tier."),
-    search: str = typer.Option(None, "--search", "-s", help="Title contains this text."),
-    closed: bool = typer.Option(False, "--closed", help="Show recently closed instead."),
-    limit: int = typer.Option(50, "--limit", "-l"),
-) -> None:
-    """List collected job postings."""
-    s: Settings = ctx.obj.settings
+def _job_filters():
+    """Options shared by `jobs` and `export`."""
+    return dict(
+        new=typer.Option(False, "--new", "-n", help="Only first seen in the latest collect."),
+        days=typer.Option(None, "--days", "-d", help="Only first seen in the last N days."),
+        match=typer.Option(False, "--match", "-m",
+                           help="Rough title filter using filters.yaml keywords (E5 replaces it)."),
+        remote=typer.Option(False, "--remote", help="Only postings marked remote."),
+        company=typer.Option(None, "--company", "-c", help="Only this company (repeatable)."),
+        tier=typer.Option(None, "--tier", "-t", help="Only this tier (repeatable)."),
+        search=typer.Option(None, "--search", "-s", help="Title contains this text."),
+        closed=typer.Option(False, "--closed", help="Recently closed postings instead of open."),
+    )
+
+
+_F = _job_filters()
+
+
+def _query_jobs(s: Settings, new, days, match, remote, company, tier, search, closed):
+    """Rows for the given filters, plus the set of job ids that are new since the last collect."""
+    from jobscout.export import title_matches
+
     conn = connect(s.db_path)
-    sql = ("SELECT j.*, c.name AS company, c.tier FROM jobs j"
+    last = conn.execute(
+        "SELECT started_at FROM runs WHERE command = 'collect' AND status = 'success'"
+        " ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    sql = ("SELECT j.*, c.name AS company, c.tier, c.segment FROM jobs j"
            " JOIN companies c ON c.id = j.company_id WHERE c.active = 1")
     params: list = []
     sql += " AND j.closed_at IS NOT NULL" if closed else " AND j.closed_at IS NULL"
-    if new:
-        last = conn.execute(
-            "SELECT started_at FROM runs WHERE command = 'collect' AND status = 'success'"
-            " ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        if last:
-            sql += " AND j.first_seen_at >= datetime(?)"
-            params.append(last["started_at"])
+    if new and last:
+        sql += " AND j.first_seen_at >= datetime(?)"
+        params.append(last["started_at"])
     if days:
         sql += " AND j.first_seen_at >= datetime('now', ?)"
         params.append(f"-{days} days")
@@ -357,19 +360,34 @@ def jobs_cmd(
         sql += " AND lower(j.title) LIKE ?"
         params.append(f"%{search.lower()}%")
     rows = conn.execute(sql + " ORDER BY c.tier, j.first_seen_at DESC, c.name", params).fetchall()
+    new_ids = set()
+    if last:
+        new_ids = {r[0] for r in conn.execute(
+            "SELECT id FROM jobs WHERE first_seen_at >= datetime(?)", (last["started_at"],))}
     conn.close()
 
-    if match:
-        try:
-            f = load_filters(s.filters_path)
-        except ConfigError as e:
+    filters = None
+    try:
+        filters = load_filters(s.filters_path)
+    except ConfigError as e:
+        if match:
             _fail(str(e))
-        inc = [k.lower() for k in f.titles.include_keywords]
-        exc = [k.lower() for k in f.titles.exclude_keywords]
-        rows = [r for r in rows
-                if (not inc or any(k in r["title"].lower() for k in inc))
-                and not any(k in r["title"].lower() for k in exc)]
+    if match:
+        rows = [r for r in rows if title_matches(r["title"], filters)]
+    return rows, new_ids, filters
 
+
+@app.command("jobs")
+def jobs_cmd(
+    ctx: typer.Context,
+    new: bool = _F["new"], days: int = _F["days"], match: bool = _F["match"],
+    remote: bool = _F["remote"], company: list[str] = _F["company"], tier: list[str] = _F["tier"],
+    search: str = _F["search"], closed: bool = _F["closed"],
+    limit: int = typer.Option(50, "--limit", "-l"),
+) -> None:
+    """List collected job postings in the terminal."""
+    rows, _, _ = _query_jobs(ctx.obj.settings, new, days, match, remote, company, tier, search,
+                             closed)
     if not rows:
         typer.echo("No postings match.")
         return
@@ -380,8 +398,37 @@ def jobs_cmd(
             pay = f"${r['comp_min'] // 1000}k-${(r['comp_max'] or r['comp_min']) // 1000}k"
         typer.echo(f"{r['tier']}  {r['company'][:22]:<22} {r['title'][:58]:<58} "
                    f"{where[:24]:<24} {pay:<11} {r['url'] or ''}")
-    more = f" (showing {limit}; use --limit)" if len(rows) > limit else ""
+    more = f" (showing {limit}; use --limit or `jobscout export`)" if len(rows) > limit else ""
     typer.echo(f"\n{len(rows)} postings{more}")
+
+
+@app.command()
+def export(
+    ctx: typer.Context,
+    new: bool = _F["new"], days: int = _F["days"], match: bool = _F["match"],
+    remote: bool = _F["remote"], company: list[str] = _F["company"], tier: list[str] = _F["tier"],
+    search: str = _F["search"], closed: bool = _F["closed"],
+    out: Path = typer.Option(None, "--out", "-o", help="Where to write (default reports/)."),
+    open_file: bool = typer.Option(True, "--open/--no-open", help="Open it when done (macOS)."),
+) -> None:
+    """Write postings to an Excel file you can sort and filter. Same filters as `jobs`."""
+    import subprocess
+    import sys
+    from datetime import date
+
+    from jobscout.export import write_jobs_xlsx
+
+    s: Settings = ctx.obj.settings
+    rows, new_ids, filters = _query_jobs(s, new, days, match, remote, company, tier, search,
+                                         closed)
+    if not rows:
+        typer.echo("No postings match.")
+        return
+    path = out or Path("reports") / f"jobs-{date.today().isoformat()}.xlsx"
+    write_jobs_xlsx(rows, path, new_ids, filters)
+    typer.echo(f"Wrote {len(rows)} postings to {path}")
+    if open_file and sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
 
 
 @app.command()

@@ -245,6 +245,7 @@ jobscout collect                    # pull every open posting from every readabl
 jobscout jobs --new --match         # what's new since the last collect, rough title filter
 jobscout jobs --remote --tier A     # open remote roles at A-tier companies
 jobscout jobs --closed --days 7     # what came down this week
+jobscout export --match             # same filters, as an Excel file in reports/ (opens on a Mac)
 ```
 
 Each run saves postings once, tracks what's **new**, **updated**, **closed**, or **reopened**,

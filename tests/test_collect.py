@@ -287,3 +287,38 @@ def test_cli_collect_and_jobs(workdir, monkeypatch):
 
     result = runner.invoke(app, ["runs"])
     assert "collect" in result.output and json.dumps({}) not in result.output
+
+
+def test_cli_export_writes_xlsx(workdir, monkeypatch):
+    import functools
+
+    from openpyxl import load_workbook
+
+    import jobscout.http as jhttp
+    from jobscout.cli import app
+    from jobscout.store import connect
+
+    monkeypatch.setattr(jhttp, "PoliteClient",
+                        functools.partial(jhttp.PoliteClient, min_interval=0, backoff=0))
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    conn = connect(workdir / "data" / "test.db")
+    _company(conn, "nCino", token="ncinoinc")
+    conn.close()
+    with respx.mock:
+        respx.get("https://boards-api.greenhouse.io/v1/boards/ncinoinc/jobs").respond(
+            200, json=load_fixture("collect/greenhouse_jobs.json"))
+        runner.invoke(app, ["collect"])
+
+    out = workdir / "out.xlsx"
+    result = runner.invoke(app, ["export", "--out", str(out), "--no-open"])
+    assert result.exit_code == 0, result.output
+    wb = load_workbook(out)
+    ws = wb["Jobs"]
+    assert ws["D1"].value == "Title" and ws.max_row == 3
+    titles = {ws.cell(r, 4).value: r for r in range(2, 4)}
+    r = titles["Senior Implementation Manager"]
+    assert ws.cell(r, 7).value == 140000 and ws.cell(r, 12).value == "Yes" and ws.cell(r, 13).value == "Yes"
+    assert ws.cell(r, 4).hyperlink.target.startswith("https://job-boards.greenhouse.io/")
+    assert not ws.cell(titles["Software Engineer II"], 13).value
+    assert wb["By company"]["C2"].value.startswith("=COUNTIF(")
