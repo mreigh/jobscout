@@ -234,6 +234,15 @@ def test_ats_change_is_recorded(db):
     assert (c["old_ats"], c["new_ats"]) == ("lever", "greenhouse")
 
 
+def test_filling_in_a_hint_is_not_an_ats_change(db):
+    from jobscout.detect import DetectionResult
+
+    row = _add(db, "FIS", ats="workday", ats_token=None, detect_status="needs_url")
+    r = DetectionResult("FIS", "override", "workday", "fis|wd5|SearchJobs", "confirmed")
+    assert not save_result(db, row, r)
+    assert db.execute("SELECT COUNT(*) FROM ats_changes").fetchone()[0] == 0
+
+
 def test_companies_to_detect_skips_fresh_results(db):
     _add(db, "Fresh", detect_status="found", detected_at="2999-01-01 00:00:00")
     _add(db, "Stale", detect_status="found", detected_at="2000-01-01 00:00:00")

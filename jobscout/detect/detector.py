@@ -218,8 +218,10 @@ def companies_to_detect(
 
 def save_result(conn: sqlite3.Connection, row: sqlite3.Row, r: DetectionResult) -> bool:
     """Write a result. Returns True if the company's ATS changed from a previous value."""
+    # Only a real board (ats + token) moving counts; filling in a hint like
+    # "workday" with its actual tenant is not a change worth flagging.
     changed = bool(
-        row["ats"] and r.ats and r.status in {"found", "override"}
+        row["ats"] and row["ats_token"] and r.ats and r.status in {"found", "override"}
         and (row["ats"], row["ats_token"]) != (r.ats, r.token)
     )
     if changed:
