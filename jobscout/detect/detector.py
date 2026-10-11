@@ -74,10 +74,18 @@ def name_matches(company: str, board_name: str) -> bool:
     return False
 
 
+def _full_slug(company: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"\(.*?\)", "", company.lower()))
+
+
+def _is_full_slug(company: str, slug: str) -> bool:
+    return slug.replace("-", "") == _full_slug(company)
+
+
 def confidence_for(company: str, probe: Probe) -> str:
     if probe.board_name:
         return "confirmed" if name_matches(company, probe.board_name) else "review"
-    full = re.sub(r"[^a-z0-9]", "", re.sub(r"\(.*?\)", "", company.lower()))
+    full = _full_slug(company)
     slug = probe.slug.replace("-", "")
     # Without a name to check, only trust distinctive slugs that match the whole name
     if slug == full and len(full) >= 5:
@@ -138,7 +146,15 @@ def detect_company(
             p = safe_probe(PROBERS[ats], http, ats, slug)
             probes.append(p)
             if p.found:
-                hits.append((confidence_for(company, p), p))
+                conf = confidence_for(company, p)
+                if conf == "review" and p.board_name and not _is_full_slug(company, p.slug):
+                    # A partial-name guess landed on a board that names a different
+                    # company ("cornerstone" -> "Cornerstone Child Development Center").
+                    p.found = False
+                    p.error = None
+                    p.board_name = f"rejected: {p.board_name}"
+                    continue
+                hits.append((conf, p))
                 break  # one hit per ATS is enough
         if hits and hits[-1][0] == "confirmed":
             break  # stop early, no need to probe the rest

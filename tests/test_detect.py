@@ -143,6 +143,16 @@ def test_name_mismatch_flagged_for_review(net, http):
     assert (r.status, r.confidence) == ("found", "review")
 
 
+def test_partial_slug_on_someone_elses_board_is_skipped(net, http):
+    # Seen live: "cornerstone" is a child development center's Greenhouse board
+    net.get(f"{GH}/cornerstone").respond(200, json={"name": "Cornerstone Child Development Center"})
+    net.get(f"{GH}/cornerstone/jobs").respond(200, json={"jobs": [{}], "meta": {"total": 3}})
+    finish(net)
+    r = detect_company(http, "Cornerstone Advisors")
+    assert r.status == "not_found"
+    assert any((p.board_name or "").startswith("rejected") for p in r.probes)
+
+
 def test_confirmed_beats_review_across_ats(net, http):
     net.get(f"{GH}/polly").respond(200, json={"name": "Polly Pocket Toys"})
     net.get(f"{GH}/polly/jobs").respond(200, json={"jobs": [], "meta": {"total": 0}})

@@ -39,24 +39,53 @@ class TransientError(Exception):
     """The request failed in a way that says nothing about whether the resource exists."""
 
 
-class HostRateLimiter:
-    """Enforces a minimum gap between requests to the same host, across threads."""
+# Hosts that want a slower pace than the default. Workable answered HTTP 429 to
+# about 45 of 114 companies on the first real run at 4 requests/second.
+HOST_INTERVALS = {"apply.workable.com": 1.5}
+MAX_INTERVAL = 10.0
 
-    def __init__(self, min_interval: float = 0.25):
+
+class HostRateLimiter:
+    """Enforces a minimum gap between requests to the same host, across threads.
+
+    Each host starts at its configured pace; a 429 from a host doubles its gap
+    (up to MAX_INTERVAL) for the rest of the run, so we back off instead of
+    hammering a server that already said slow down.
+    """
+
+    def __init__(self, min_interval: float = 0.25, host_intervals: dict[str, float] | None = None):
+        self.enabled = min_interval > 0
         self.min_interval = min_interval
+        self.intervals: dict[str, float] = dict(
+            HOST_INTERVALS if host_intervals is None else host_intervals
+        )
         self._next_ok: dict[str, float] = {}
         self._lock = threading.Lock()
 
+    def interval(self, host: str) -> float:
+        return max(self.min_interval, self.intervals.get(host, 0.0))
+
     def wait(self, host: str) -> None:
-        if self.min_interval <= 0:
+        if not self.enabled:
             return
         with self._lock:
             now = time.monotonic()
             slot = max(now, self._next_ok.get(host, 0.0))
-            self._next_ok[host] = slot + self.min_interval
+            self._next_ok[host] = slot + self.interval(host)
         delay = slot - now
         if delay > 0:
             time.sleep(delay)
+
+    def slow_down(self, host: str, pause: float = 0.0) -> float:
+        """Double this host's gap and hold every thread off it for `pause` seconds."""
+        if not self.enabled:
+            return 0.0
+        with self._lock:
+            new = min(MAX_INTERVAL, self.interval(host) * 2)
+            self.intervals[host] = new
+            self._next_ok[host] = max(self._next_ok.get(host, 0.0), time.monotonic() + pause)
+        log.info("slowing down", extra={"host": host, "interval_s": new})
+        return new
 
 
 class PoliteClient:
@@ -64,11 +93,12 @@ class PoliteClient:
         self,
         client: httpx.Client | None = None,
         min_interval: float = 0.25,
-        retries: int = 2,
+        retries: int = 3,
         backoff: float = 1.0,
+        host_intervals: dict[str, float] | None = None,
     ):
         self.client = client or make_client()
-        self.limiter = HostRateLimiter(min_interval)
+        self.limiter = HostRateLimiter(min_interval, host_intervals)
         self.retries = retries
         self.backoff = backoff
 
@@ -87,9 +117,15 @@ class PoliteClient:
                 if resp.status_code not in RETRY_STATUSES:
                     return resp
                 last = f"HTTP {resp.status_code}"
-                retry_after = resp.headers.get("Retry-After", "")
-                if retry_after.isdigit():
-                    time.sleep(min(int(retry_after), 30))
+                if resp.status_code == 429 and attempt < self.retries:
+                    retry_after = resp.headers.get("Retry-After", "")
+                    pause = (
+                        min(int(retry_after), 60)
+                        if retry_after.isdigit()
+                        else self.backoff * 4 * (2**attempt)
+                    )
+                    self.limiter.slow_down(host, pause)
+                    continue  # the limiter now holds this host off for `pause`
             if attempt < self.retries:
                 time.sleep(self.backoff * (2**attempt))
         log.debug("giving up on request", extra={"url": url, "reason": last})

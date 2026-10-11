@@ -36,3 +36,26 @@ def test_network_is_blocked_by_default():
         except respx.models.AllMockedAssertionError:
             return
     raise AssertionError("unmocked request should not have gone through")
+
+
+def test_429_slows_the_host_down_and_retries():
+    from jobscout.http import PoliteClient
+
+    url = "https://apply.workable.com/api/v1/widget/accounts/acme"
+    with respx.mock:
+        route = respx.get(url).mock(side_effect=[
+            httpx.Response(429), httpx.Response(429), httpx.Response(200, json={"jobs": []}),
+        ])
+        http = PoliteClient(min_interval=0.01, backoff=0.001, host_intervals={})
+        before = http.limiter.interval("apply.workable.com")
+        resp = http.get(url)
+    assert resp.status_code == 200 and route.call_count == 3
+    assert http.limiter.interval("apply.workable.com") == before * 4  # doubled twice
+
+
+def test_workable_gets_a_slower_default_pace():
+    from jobscout.http import PoliteClient
+
+    http = PoliteClient()
+    assert http.limiter.interval("apply.workable.com") >= 1.5
+    assert http.limiter.interval("boards-api.greenhouse.io") == 0.25
