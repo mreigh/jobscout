@@ -234,12 +234,32 @@ URL into the **Board URL (override)** column, re-import, and re-run `detect`. Ov
 always win. Re-running `detect` only re-checks new, failed, or week-old results; use
 `--refresh` to re-check everything or `--company "Q2"` for one company.
 
-A weekly GitHub Action (`Live API check`) runs detection for real against the sample list,
-so API changes on the job boards' side get caught.
+A weekly GitHub Action (`Live API check`) runs detection and collection for real against
+`samples/live-check.csv` (one company per job board type), so API changes on the job boards'
+side get caught.
+
+### Collecting postings
+
+```bash
+jobscout collect                    # pull every open posting from every readable board
+jobscout jobs --new --match         # what's new since the last collect, rough title filter
+jobscout jobs --remote --tier A     # open remote roles at A-tier companies
+jobscout jobs --closed --days 7     # what came down this week
+```
+
+Each run saves postings once, tracks what's **new**, **updated**, **closed**, or **reopened**,
+and never closes a company's jobs because its board timed out. Workday descriptions are only
+fetched for postings not seen before, so big boards (FIS, Fiserv) stay polite after day one.
+Pay ranges come from the job board when it publishes them, otherwise from the description text.
+
+Readable today: Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Workday. Company-run
+career pages and other systems (iCIMS, Rippling, Gem, Paylocity, Dayforce) are next.
 
 ## Status
 
 - **E0 Foundation: done.** Package, typed config, versioned SQLite schema, CLI, structured logging, run tracking, offline test harness, CI.
 - **E1 Watchlist + ATS detection: done.** Spreadsheet import, slug guessing, five ATS probers, confidence scoring, Workday and other overrides, ATS change history, polite rate-limited HTTP with retries, weekly live API check.
 
-**Next:** E2, collectors that pull the actual postings. See [BACKLOG.md](docs/BACKLOG.md).
+- **E2 (core) Collectors + E4 job lifecycle: done.** Six ATS collectors, new/updated/closed/reopened tracking, pay parsing, remote detection, `collect` and `jobs` commands.
+
+**Next:** company-run career pages via Claude extraction (JS-027), then filtering and scoring (E5). See [BACKLOG.md](docs/BACKLOG.md).

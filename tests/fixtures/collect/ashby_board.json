@@ -1,0 +1,9 @@
+{"apiVersion": "1", "jobs": [
+  {"id": "e1", "title": "Implementation Lead", "department": "Customer", "team": "Onboarding", "location": "United States",
+   "isListed": true, "isRemote": true, "workplaceType": "Remote", "publishedAt": "2026-10-05T12:00:00.000+00:00",
+   "jobUrl": "https://jobs.ashbyhq.com/evenup/e1", "descriptionPlain": "Run customer onboarding.",
+   "compensation": {"summaryComponents": [
+     {"compensationType": "Salary", "interval": "1 YEAR", "currencyCode": "USD", "minValue": 130000, "maxValue": 160000},
+     {"compensationType": "EquityPercentage", "interval": "NONE", "minValue": 0.01, "maxValue": 0.02}]}},
+  {"id": "e2", "title": "Hidden Role", "isListed": false, "location": "Remote", "jobUrl": "https://jobs.ashbyhq.com/evenup/e2"}
+]}

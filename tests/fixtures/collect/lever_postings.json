@@ -1,0 +1,12 @@
+[
+  {"id": "aa11-bb22", "text": "Solutions Architect", "hostedUrl": "https://jobs.lever.co/truv/aa11-bb22",
+   "categories": {"location": "Remote", "team": "Solutions", "commitment": "Full-time"},
+   "workplaceType": "remote", "createdAt": 1759320000000,
+   "descriptionPlain": "Help lenders integrate income verification.",
+   "lists": [{"text": "What you'll do", "content": "<li>Lead integrations</li><li>Partner with sales</li>"}],
+   "additionalPlain": "Benefits included.",
+   "salaryRange": {"currency": "USD", "interval": "per-year-salary", "min": 150000, "max": 185000}},
+  {"id": "cc33-dd44", "text": "Account Executive", "hostedUrl": "https://jobs.lever.co/truv/cc33-dd44",
+   "categories": {"location": "New York, NY", "team": "Sales"}, "workplaceType": "hybrid", "createdAt": 1759406400000,
+   "descriptionPlain": "Sell things."}
+]

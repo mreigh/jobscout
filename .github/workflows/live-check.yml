@@ -13,7 +13,8 @@ on:
     paths:
       - "jobscout/detect/**"
       - "jobscout/http.py"
-      - "samples/watchlist.sample.csv"
+      - "samples/live-check.csv"
+      - "jobscout/collect/**"
       - ".github/workflows/live-check.yml"
       - ".github/scripts/**"
 
@@ -38,8 +39,14 @@ jobs:
           JOBSCOUT_LOG_DIR: ci-logs
         run: |
           jobscout init
-          jobscout watchlist import --file samples/watchlist.sample.csv
+          jobscout watchlist import --file samples/live-check.csv
           jobscout detect --refresh
+      - name: Collect postings from every ATS type
+        if: always()
+        env:
+          JOBSCOUT_DB_PATH: ci-data/live.db
+          JOBSCOUT_LOG_DIR: ci-logs
+        run: jobscout collect
       - name: Report results
         if: always()
         run: python .github/scripts/report_detection.py ci-data/live.db

@@ -36,17 +36,17 @@
 | JS-013 | Manual override column so a hand-entered board URL always wins | P0 | S | Override respected on every run |
 | JS-014 | Weekly re-detection to catch ATS migrations and dead boards | P2 | S | Changes logged and shown in the digest health section |
 
-## E2: Collectors
+## E2: Collectors (core ✅ Oct 11, 2026; JS-027/028 open)
 
 | ID | Story | Pri | Size | Acceptance criteria |
 |---|---|---|---|---|
-| JS-020 | Collector interface: every collector returns a list of `RawPosting` with source, URL, title, location, description, posted date, comp if present | P0 | S | Interface documented; one shared test suite |
-| JS-021 | Greenhouse collector | P0 | S | Pulls all postings with full descriptions for a board |
-| JS-022 | Lever collector | P0 | S | Same |
-| JS-023 | Ashby collector, including comp when published | P0 | S | Same, comp parsed into min/max |
-| JS-024 | SmartRecruiters collector | P1 | S | Same |
-| JS-025 | Workable collector | P1 | S | Same |
-| JS-026 | Workday collector (paged JSON search + detail fetch) | P1 | L | Handles paging and per-tenant quirks for FIS, Associated, NM, CLA |
+| JS-020 | ✅ Collector interface: every collector returns a list of `RawPosting` with source, URL, title, location, description, posted date, comp if present | P0 | S | Interface documented; one shared test suite |
+| JS-021 | ✅ Greenhouse collector | P0 | S | Pulls all postings with full descriptions for a board |
+| JS-022 | ✅ Lever collector | P0 | S | Same |
+| JS-023 | ✅ Ashby collector, including comp when published | P0 | S | Same, comp parsed into min/max |
+| JS-024 | ✅ SmartRecruiters collector | P1 | S | Same |
+| JS-025 | ✅ Workable collector | P1 | S | Same |
+| JS-026 | ✅ Workday collector (paged JSON search + detail fetch) | P1 | L | Handles paging and per-tenant quirks for FIS, Associated, NM, CLA |
 | JS-027 | Generic careers-page fallback: fetch HTML, extract postings with Claude into the `RawPosting` shape | P2 | M | Works on at least 3 non-standard sites; strict rate limit |
 | JS-028 | Staffing board collectors (Kforce, Apex, Beacon Hill) filtered to WI + remote FS | P2 | M | Only local or remote fintech-relevant results kept |
 | JS-029 | ✅ (shipped early in E1) Per-host rate limiting, retries with backoff, honest user agent | P0 | S | No host hit more than N times per minute; failures don't kill the run |
@@ -60,14 +60,14 @@
 | JS-032 | Alert parsers for LinkedIn and Indeed emails into `RawPosting` | P1 | M | Title, company, location, link extracted from real samples |
 | JS-033 | Resolve alert links back to the company's own ATS posting when possible | P2 | M | Alert jobs merge with the matching ATS record |
 
-## E4: Normalize and dedupe
+## E4: Normalize and dedupe ✅ Done Oct 11, 2026 (title synonyms deferred to E5)
 
 | ID | Story | Pri | Size | Acceptance criteria |
 |---|---|---|---|---|
-| JS-040 | Normalize titles, locations, remote/hybrid flags, comp | P0 | M | "Sr." / "Senior", "Remote - US" / "United States (Remote)" etc. collapse consistently |
-| JS-041 | Job fingerprint + cross-source dedupe | P0 | M | Same role from two sources appears once |
-| JS-042 | New / updated / closed detection between runs | P0 | S | Digest can say "new today" and "closed since yesterday" |
-| JS-043 | Store raw payloads for replay | P1 | S | `jobscout rescore` works without re-fetching |
+| JS-040 | ◐ Normalize remote/hybrid flags and comp (done); title synonyms like Sr./Senior move to E5 filters | P0 | M | "Sr." / "Senior", "Remote - US" / "United States (Remote)" etc. collapse consistently |
+| JS-041 | ✅ Job fingerprint per board posting (cross-source merge with email alerts lands with E3) | P0 | M | Same role from two sources appears once |
+| JS-042 | ✅ New / updated / closed detection between runs | P0 | S | Digest can say "new today" and "closed since yesterday" |
+| JS-043 | ✅ Store raw payloads for replay | P1 | S | `jobscout rescore` works without re-fetching |
 
 ## E5: Filtering and fit scoring
 

@@ -1,0 +1,11 @@
+Company,Segment,Tier,Why it fits,Roles to watch,Warm angle,Status / history,Local,ATS,Notes,Board URL (override)
+Qualia,Title & Closing,B,Auto-detected Greenhouse board,Implementation,,Never engaged,,Auto-detect,,
+Alloy,Identity,A,Auto-detected Greenhouse board,Implementation,,Never engaged,,Auto-detect,,
+Plaid,Data,B,Auto-detected Ashby board,Partner Delivery,,Never engaged,,Auto-detect,,
+nCino,Digital Banking,A,Greenhouse via override,Implementation,,Never engaged,,Auto-detect,,https://job-boards.greenhouse.io/ncinoinc
+Truv,Verification,B,Lever via override,Implementation,,Never engaged,,Auto-detect,,https://jobs.lever.co/truv
+EvenUp,Applied AI,B,Ashby via override,Implementation,,Never engaged,,Auto-detect,,https://jobs.ashbyhq.com/evenup
+Partner One (Mortgage Cadence),Mortgage,A,Workable via override,Implementation,,Never engaged,,Auto-detect,,https://apply.workable.com/partner-one-capital/
+FIS,Core,A,Workday via override,Conversion,,Never engaged,,Workday,,https://fis.wd5.myworkdayjobs.com/SearchJobs
+Q2,Digital Banking,A,Workday via override,Implementation,,Never engaged,,Workday,,https://q2ebanking.wd5.myworkdayjobs.com/Q2
+Jack Henry,Core,A,Company-run careers site (not collectable yet),Implementation,,Never engaged,,Company careers site,,https://careers.jackhenry.com/

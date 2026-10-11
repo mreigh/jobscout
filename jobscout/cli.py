@@ -248,9 +248,140 @@ def detect(
 
 
 @app.command()
-def collect(ctx: typer.Context) -> None:
-    """Pull postings from every source."""
-    _stub(ctx, "collect", "E2")
+def collect(
+    ctx: typer.Context,
+    company: list[str] = typer.Option(
+        None, "--company", "-c", help="Only this company (repeatable)."
+    ),
+    tier: list[str] = typer.Option(None, "--tier", "-t", help="Only this tier (repeatable)."),
+    workers: int = typer.Option(6, help="Companies fetched in parallel."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Summary only."),
+) -> None:
+    """Pull open postings from every company's job board and track what's new or closed."""
+    from jobscout.collect.runner import companies_to_collect, run_collection
+    from jobscout.http import PoliteClient
+
+    s: Settings = ctx.obj.settings
+    try:
+        load_filters(s.filters_path)
+    except ConfigError as e:
+        _fail(str(e))
+    conn = connect(s.db_path)
+    rows = companies_to_collect(conn, names=company, tiers=tier)
+    if not rows:
+        conn.close()
+        _fail("No matching companies. Run `jobscout watchlist import` and `jobscout detect` first.")
+
+    def show(r):
+        if quiet:
+            return
+        if r.status == "ok":
+            sv = r.saved
+            extra = []
+            if sv.new:
+                extra.append(f"{len(sv.new)} new")
+            if sv.updated:
+                extra.append(f"{len(sv.updated)} updated")
+            if sv.closed:
+                extra.append(f"{len(sv.closed)} closed")
+            if sv.reopened:
+                extra.append(f"{len(sv.reopened)} reopened")
+            tail = f" ({', '.join(extra)})" if extra else ""
+            typer.echo(f"  + {r.tier} {r.company[:32]:<32} {sv.open_count:>4} open{tail}")
+        elif r.status == "error":
+            typer.echo(f"  x {r.tier} {r.company[:32]:<32} {r.error}")
+
+    typer.echo(f"Collecting from {len(rows)} companies...")
+    with tracked_run(conn, "collect") as run, PoliteClient() as http:
+        results = run_collection(conn, http, rows, run_id=run.id, workers=workers, on_result=show)
+        for r in results:
+            run.incr(r.status)
+            if r.saved:
+                run.incr("open", r.saved.open_count)
+                run.incr("new", len(r.saved.new))
+                run.incr("closed", len(r.saved.closed))
+    conn.close()
+
+    c = run.counts
+    typer.echo(
+        f"\n{c['ok']} boards read, {c['open']} open postings, {c['new']} new, {c['closed']} closed"
+        f" | {c['error']} errors, {c['unsupported']} not readable yet, {c['review']} need review"
+    )
+    if c["new"]:
+        typer.echo("See the new ones: jobscout jobs --new --match")
+
+
+@app.command("jobs")
+def jobs_cmd(
+    ctx: typer.Context,
+    new: bool = typer.Option(False, "--new", "-n", help="Only first seen in the latest collect."),
+    days: int = typer.Option(None, "--days", "-d", help="Only first seen in the last N days."),
+    match: bool = typer.Option(
+        False, "--match", "-m",
+        help="Rough title filter using filters.yaml keywords (real filtering comes in E5).",
+    ),
+    remote: bool = typer.Option(False, "--remote", help="Only postings marked remote."),
+    company: list[str] = typer.Option(None, "--company", "-c", help="Only this company."),
+    tier: list[str] = typer.Option(None, "--tier", "-t", help="Only this tier."),
+    search: str = typer.Option(None, "--search", "-s", help="Title contains this text."),
+    closed: bool = typer.Option(False, "--closed", help="Show recently closed instead."),
+    limit: int = typer.Option(50, "--limit", "-l"),
+) -> None:
+    """List collected job postings."""
+    s: Settings = ctx.obj.settings
+    conn = connect(s.db_path)
+    sql = ("SELECT j.*, c.name AS company, c.tier FROM jobs j"
+           " JOIN companies c ON c.id = j.company_id WHERE c.active = 1")
+    params: list = []
+    sql += " AND j.closed_at IS NOT NULL" if closed else " AND j.closed_at IS NULL"
+    if new:
+        last = conn.execute(
+            "SELECT started_at FROM runs WHERE command = 'collect' AND status = 'success'"
+            " ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if last:
+            sql += " AND j.first_seen_at >= datetime(?)"
+            params.append(last["started_at"])
+    if days:
+        sql += " AND j.first_seen_at >= datetime('now', ?)"
+        params.append(f"-{days} days")
+    if remote:
+        sql += " AND j.remote = 1"
+    if company:
+        sql += f" AND lower(c.name) IN ({', '.join('?' * len(company))})"
+        params += [x.lower() for x in company]
+    if tier:
+        sql += f" AND c.tier IN ({', '.join('?' * len(tier))})"
+        params += [t.upper() for t in tier]
+    if search:
+        sql += " AND lower(j.title) LIKE ?"
+        params.append(f"%{search.lower()}%")
+    rows = conn.execute(sql + " ORDER BY c.tier, j.first_seen_at DESC, c.name", params).fetchall()
+    conn.close()
+
+    if match:
+        try:
+            f = load_filters(s.filters_path)
+        except ConfigError as e:
+            _fail(str(e))
+        inc = [k.lower() for k in f.titles.include_keywords]
+        exc = [k.lower() for k in f.titles.exclude_keywords]
+        rows = [r for r in rows
+                if (not inc or any(k in r["title"].lower() for k in inc))
+                and not any(k in r["title"].lower() for k in exc)]
+
+    if not rows:
+        typer.echo("No postings match.")
+        return
+    for r in rows[:limit]:
+        where = "Remote" if r["remote"] == 1 else (r["location"] or "")
+        pay = ""
+        if r["comp_min"]:
+            pay = f"${r['comp_min'] // 1000}k-${(r['comp_max'] or r['comp_min']) // 1000}k"
+        typer.echo(f"{r['tier']}  {r['company'][:22]:<22} {r['title'][:58]:<58} "
+                   f"{where[:24]:<24} {pay:<11} {r['url'] or ''}")
+    more = f" (showing {limit}; use --limit)" if len(rows) > limit else ""
+    typer.echo(f"\n{len(rows)} postings{more}")
 
 
 @app.command()

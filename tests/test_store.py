@@ -7,7 +7,7 @@ from jobscout.store import connect, current_version, migrate
 EXPECTED_TABLES = {
     "companies", "raw_postings", "jobs", "scores", "runs", "schema_migrations", "ats_changes",
 }
-LATEST = 2
+LATEST = 3
 
 
 def test_schema_created(db):
