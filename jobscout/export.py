@@ -49,8 +49,10 @@ def write_jobs_xlsx(rows, path: Path, new_ids: set[int], filters) -> Path:
 
     for r in rows:
         remote = {1: "Yes", 0: "No"}.get(r["remote"], "")
+        dups = r["dup_count"] if isinstance(r, dict) else 1
+        title = r["title"] + (f" (x{dups} reqs)" if dups > 1 else "")
         ws.append([
-            r["tier"], r["company"], r["segment"], r["title"], r["location"], remote,
+            r["tier"], r["company"], r["segment"], title, r["location"], remote,
             r["comp_min"], r["comp_max"], r["comp_source"],
             (r["posted_at"] or "")[:10] or None, (r["first_seen_at"] or "")[:10] or None,
             "Yes" if r["id"] in new_ids else "",

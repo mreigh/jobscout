@@ -36,7 +36,8 @@ FOREIGN_CODES = {
     "CAN", "MEX", "NLD", "ESP", "ITA", "IRL", "ISR", "ARE", "CHN", "HKG", "KOR", "THA",
     "MYS", "IDN", "VNM", "EGY", "ZAF", "COL", "ARG", "CHL", "CRI", "SRB", "ROU", "BGR",
     "PRT", "AUT", "BEL", "SWE", "NOR", "DNK", "FIN", "CZE", "SVK", "HUN", "UKR", "LTU",
-    "LVA", "EST", "GRC", "TUR", "NZL", "LUX",
+    "LVA", "EST", "GRC", "TUR", "NZL", "LUX", "CYP", "SAU", "QAT", "PAK", "BGD", "LKA",
+    "TWN", "MAC", "MAR", "NGA", "KEN", "UK",
 }
 
 # Country, province, and well-known foreign city names, matched on word boundaries
@@ -53,6 +54,11 @@ FOREIGN_WORDS = (
     "ontario", "quebec", "alberta", "british columbia", "nova scotia", "manitoba",
     "dublin", "berlin", "frankfurt", "paris", "madrid", "barcelona", "amsterdam",
     "zurich", "geneva", "manila", "sao paulo", "tel aviv", "dubai",
+    "cyprus", "nicosia", "lisbon", "porto", "glasgow", "edinburgh", "mississauga",
+    "ottawa", "calgary", "winnipeg", "prague", "krakow", "gdansk", "bratislava",
+    "budapest", "bucharest", "sofia", "belgrade", "athens", "istanbul", "cairo",
+    "nairobi", "lagos", "johannesburg", "cape town", "karachi", "dhaka", "colombo",
+    "taipei", "osaka", "bangkok", "jakarta", "kuala lumpur", "hanoi", "auckland", "baden",
 )
 _FOREIGN_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in FOREIGN_WORDS) + r")\b")
 _US_RE = re.compile(r"\b(usa|united states|u\.s\.)\b")
@@ -65,7 +71,22 @@ METRO_MARKERS = {
     "chicago": ("chicago",),
 }
 
-_REMOTE_DESC_RE = re.compile(r"\bremote\b|\bwork from home\b|\bwork from anywhere\b", re.I)
+# A description rescues a city-headed posting only with a POSITIVE remote phrase.
+# A bare "remote" is not enough: onsite JDs mention remote teams, remote Fridays,
+# even "this role is not remote" (the Qualia Austin leak).
+_REMOTE_DESC_RE = re.compile(
+    r"remote eligible|remote[- ]first|fully remote|100% remote|work remotely"
+    r"|work from home|work from anywhere|remote position|remote role"
+    r"|remote within the|us[- ]remote|remote[,-] ?us\b", re.I)
+
+# Large US hub cities count as a specific place even without a state code
+# (the "Atlanta" / "Austin, TX" leaks from the Oct 11 pass list)
+_US_CITY_RE = re.compile(
+    r"\b(new york|nyc|san francisco|seattle|boston|denver|atlanta|austin|dallas|houston"
+    r"|charlotte|chicago|jacksonville|phoenix|columbus|minneapolis|st\.? louis|kansas city"
+    r"|salt lake|tampa|orlando|pittsburgh|cincinnati|cleveland|detroit|nashville|raleigh"
+    r"|richmond|baltimore|philadelphia|los angeles|san diego|san jose|portland|sacramento"
+    r"|las vegas|san antonio|miami|washington|omaha)\b", re.I)
 
 
 def _tokens(*texts: str | None) -> set[str]:
@@ -104,7 +125,8 @@ def _location_verdict(location, url, description, remote, filters: FiltersConfig
         return "pass"  # the body says remote even though the header names a city
 
     # Positive evidence of a specific, non-commutable place with no remote signal
-    has_place = bool(toks & US_STATE_CODES) or bool(_US_RE.search(low)) or foreign
+    has_place = (bool(toks & US_STATE_CODES) or bool(_US_RE.search(low)) or foreign
+                 or bool(_US_CITY_RE.search(low)))
     if remote is False and text:
         return "location:not-commutable"
     if has_place:

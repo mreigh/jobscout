@@ -84,7 +84,7 @@ def test_madison_and_chicago_onsites_excluded_per_decision():
     ("Renewals Manager Lead - Front Office Solutions", "title:renewals"),
     ("Implementation Analyst II", "title:analyst i"),
     ("Project Implementation Conversion - Regular Night shift", "title:night shift"),
-    ("Software Engineer II", "lane:no-match"),
+    ("Software Engineer II", "title:software engineer"),
     ("Staff Accountant", "lane:no-match"),
 ])
 def test_wrong_role(title, want):
@@ -130,3 +130,42 @@ def test_apply_gates_grades_open_jobs_and_is_idempotent(db):
     got = {r["fingerprint"]: r["filter_result"] for r in db.execute("SELECT * FROM jobs")}
     assert got == {"a": "pass", "b": "title:sales executive", "c": "location:non-us", "d": None}
     assert apply_gates(db, FILTERS) == v  # unchanged on a second run
+
+
+# --- Leaks found in the first full prod run (Oct 11, 258 passes) --------------
+
+
+@pytest.mark.parametrize("title, loc, want", [
+    ("Project Manager Senior", "CYP Virtual", "location:non-us"),            # Cyprus, FIS
+    ("Project Manager Lead", "CYP NICO 4 FLR 1", "location:non-us"),
+    ("Senior Project Manager", "Lisbon", "location:non-us"),                 # Finastra
+    ("Service Delivery Manager", "Mississauga - Avebury", "location:non-us"),
+    ("Senior Project Manager", "UK - Glasgow", "location:non-us"),           # Capco
+    ("Customer Success Manager", "Atlanta", "location:not-commutable"),      # city, no state code
+    ("Implementation Manager, SMB", "Austin, TX", "location:not-commutable"),
+    ("Senior Product Manager, Clear", "Austin, TX", "location:not-commutable"),
+])
+def test_oct11_location_leaks_are_closed(title, loc, want):
+    assert gate(title, loc) == want
+
+
+def test_bare_remote_mention_no_longer_rescues_a_city():
+    # Onsite JDs mention "remote teams" and "remote Fridays" all the time
+    assert gate("Implementation Manager, SMB", "Austin, TX",
+                description="We collaborate with remote teams across the company") == \
+        "location:not-commutable"
+    assert gate("Implementation Manager, SMB", "Austin, TX",
+                description="This is a fully remote position") == "pass"
+
+
+def test_software_engineer_excluded_but_implementation_engineer_kept():
+    assert gate("Software Engineer II, Delivery", "Remote", remote=True) == \
+        "title:software engineer"
+    assert gate("Senior Software Implementation Engineer", "Remote", remote=True,
+                comp_min=145000, comp_max=165000) == "pass"
+
+
+def test_milwaukee_hub_still_commutable_with_city_list():
+    assert gate("Account Manager II, Client Success (CSM)", "US WI MKE 4900") == "pass"
+    assert gate("Product Manager - Deposits", "Milwaukee 111 Kilbourn",
+                comp_min=79000, comp_max=136000) == "pass"

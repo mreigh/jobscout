@@ -387,7 +387,21 @@ def _query_jobs(s: Settings, new, days, match, remote, company, tier, search, cl
             _fail(str(e))
     if match:
         rows = [r for r in rows if title_matches(r["title"], filters)]
-    return rows, new_ids, filters
+
+    # Collapse identical postings (same company, title, location): big Workday
+    # tenants post one req per seat, e.g. five "Account Manager II, Client Success"
+    # rows at FIS Milwaukee. The survivor carries dup_count.
+    merged, seen = [], {}
+    for r in rows:
+        key = (r["company"], r["title"], r["location"], r["remote"])
+        if key in seen:
+            seen[key]["dup_count"] += 1
+            continue
+        d = dict(r)
+        d["dup_count"] = 1
+        seen[key] = d
+        merged.append(d)
+    return merged, new_ids, filters
 
 
 @app.command("jobs")
@@ -409,7 +423,8 @@ def jobs_cmd(
         pay = ""
         if r["comp_min"]:
             pay = f"${r['comp_min'] // 1000}k-${(r['comp_max'] or r['comp_min']) // 1000}k"
-        typer.echo(f"{r['tier']}  {r['company'][:22]:<22} {r['title'][:58]:<58} "
+        title = r["title"] + (f" (x{r['dup_count']} reqs)" if r["dup_count"] > 1 else "")
+        typer.echo(f"{r['tier']}  {r['company'][:22]:<22} {title[:58]:<58} "
                    f"{where[:24]:<24} {pay:<11} {r['url'] or ''}")
     more = f" (showing {limit}; use --limit or `jobscout export`)" if len(rows) > limit else ""
     typer.echo(f"\n{len(rows)} postings{more}")

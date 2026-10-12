@@ -332,5 +332,25 @@ def test_cli_export_writes_xlsx(workdir, monkeypatch):
     r = titles["Senior Implementation Manager"]
     assert ws.cell(r, 7).value == 140000 and ws.cell(r, 12).value == "Yes" and ws.cell(r, 16).value == "pass"
     assert ws.cell(r, 4).hyperlink.target.startswith("https://job-boards.greenhouse.io/")
-    assert ws.cell(titles["Software Engineer II"], 16).value == "lane:no-match"
+    assert ws.cell(titles["Software Engineer II"], 16).value == "title:software engineer"
     assert wb["By company"]["C2"].value.startswith("=COUNTIF(")
+
+
+def test_identical_reqs_collapse_in_views(workdir):
+    from jobscout.cli import app
+    from jobscout.store import connect
+
+    runner = CliRunner()
+    runner.invoke(app, ["init"])
+    conn = connect(workdir / "data" / "test.db")
+    _company(conn, "FIS", ats="workday", token="fis|wd5|SearchJobs", detect_status="override")
+    for i in range(3):
+        conn.execute(
+            "INSERT INTO jobs (fingerprint, company_id, source, external_id, title, location,"
+            " filter_result) VALUES (?, 1, 'workday', ?, 'Account Manager II, Client Success',"
+            " 'US WI MKE 4900', 'pass')", (f"fp{i}", f"/job/{i}"))
+    conn.close()
+    result = runner.invoke(app, ["jobs"])
+    assert result.exit_code == 0, result.output
+    assert "(x3 reqs)" in result.output
+    assert "1 postings" in result.output
