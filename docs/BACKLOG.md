@@ -69,11 +69,11 @@
 | JS-042 | ✅ New / updated / closed detection between runs | P0 | S | Digest can say "new today" and "closed since yesterday" |
 | JS-043 | ✅ Store raw payloads for replay | P1 | S | `jobscout rescore` works without re-fetching |
 
-## E5: Filtering and fit scoring
+## E5: Filtering and fit scoring (JS-050 ✅ Oct 11, 2026)
 
 | ID | Story | Pri | Size | Acceptance criteria |
 |---|---|---|---|---|
-| JS-050 | `filters.yaml` hard rules: location, comp floor, include/exclude title keywords, exclusion phrases | P0 | M | Each dropped job records which rule dropped it |
+| JS-050 | ✅ Hard gates: location (US remote / Milwaukee metro), comp floor, lane includes, title excludes; verdict stored per job; `regate` | P0 | M | Each dropped job records which rule dropped it |
 | JS-051 | `candidate.yaml` profile: verified history, target lanes, dealbreakers, IC vs. leader preference | P0 | M | Built only from verified facts; gitignored; sample version committed |
 | JS-052 | Claude fit scorer: score, recommendation, why-it-fits, gap flags, level read, as structured JSON | P0 | M | Output validated against a schema; invalid responses retried once then flagged |
 | JS-053 | Score caching by fingerprint + description hash | P0 | S | Unchanged jobs never re-scored |

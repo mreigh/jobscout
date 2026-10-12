@@ -274,8 +274,9 @@ def test_cli_collect_and_jobs(workdir, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "2 boards read, 5 open postings, 5 new, 0 closed" in result.output
     assert "1 not readable yet" in result.output
+    assert "Gates: 3 pass, 2 filtered out" in result.output
 
-    result = runner.invoke(app, ["jobs", "--new", "--match"])
+    result = runner.invoke(app, ["jobs", "--new"])
     assert result.exit_code == 0, result.output
     assert "Senior Implementation Manager" in result.output
     assert "Software Engineer II" not in result.output       # not in include keywords
@@ -284,6 +285,12 @@ def test_cli_collect_and_jobs(workdir, monkeypatch):
     result = runner.invoke(app, ["jobs", "--remote", "--company", "FIS"])
     assert "Consultant Lead, Conversions" in result.output
     assert "1 postings" in result.output
+
+    # The Jacksonville onsite Product Owner is gated out of the default view, visible with --all
+    result = runner.invoke(app, ["jobs", "--company", "FIS"])
+    assert "Product Owner, Digital Banking" not in result.output
+    result = runner.invoke(app, ["jobs", "--company", "FIS", "--all"])
+    assert "Product Owner, Digital Banking" in result.output
 
     result = runner.invoke(app, ["runs"])
     assert "collect" in result.output and json.dumps({}) not in result.output
@@ -313,12 +320,17 @@ def test_cli_export_writes_xlsx(workdir, monkeypatch):
     out = workdir / "out.xlsx"
     result = runner.invoke(app, ["export", "--out", str(out), "--no-open"])
     assert result.exit_code == 0, result.output
+    ws = load_workbook(out)["Jobs"]
+    assert ws.max_row == 2 and ws.cell(2, 4).value == "Senior Implementation Manager"
+
+    result = runner.invoke(app, ["export", "--all", "--out", str(out), "--no-open"])
+    assert result.exit_code == 0, result.output
     wb = load_workbook(out)
     ws = wb["Jobs"]
-    assert ws["D1"].value == "Title" and ws.max_row == 3
+    assert ws["D1"].value == "Title" and ws["P1"].value == "Gate" and ws.max_row == 3
     titles = {ws.cell(r, 4).value: r for r in range(2, 4)}
     r = titles["Senior Implementation Manager"]
-    assert ws.cell(r, 7).value == 140000 and ws.cell(r, 12).value == "Yes" and ws.cell(r, 13).value == "Yes"
+    assert ws.cell(r, 7).value == 140000 and ws.cell(r, 12).value == "Yes" and ws.cell(r, 16).value == "pass"
     assert ws.cell(r, 4).hyperlink.target.startswith("https://job-boards.greenhouse.io/")
-    assert not ws.cell(titles["Software Engineer II"], 13).value
+    assert ws.cell(titles["Software Engineer II"], 16).value == "lane:no-match"
     assert wb["By company"]["C2"].value.startswith("=COUNTIF(")

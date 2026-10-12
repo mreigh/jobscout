@@ -245,8 +245,19 @@ jobscout collect                    # pull every open posting from every readabl
 jobscout jobs --new --match         # what's new since the last collect, rough title filter
 jobscout jobs --remote --tier A     # open remote roles at A-tier companies
 jobscout jobs --closed --days 7     # what came down this week
-jobscout export --match             # same filters, as an Excel file in reports/ (opens on a Mac)
+jobscout jobs --all                 # include what the gates filtered out, with reasons
+jobscout export                     # the gated list as an Excel file in reports/ (opens on a Mac)
+jobscout regate                     # re-apply the gates after editing config/filters.yaml
 ```
+
+### Hard gates
+
+Every open posting is graded against deterministic rules in `config/filters.yaml` and the
+verdict is stored on the job: `pass`, or the rule that killed it (`location:non-us`,
+`pay:below-floor`, `title:sales executive`, `lane:no-match`). Default views show only `pass`;
+`--all` shows everything with its reason. The gates fail a posting only on positive evidence:
+unknown locations and unstated pay survive for the scorer to judge. Gates run automatically at
+the end of every collect.
 
 Each run saves postings once, tracks what's **new**, **updated**, **closed**, or **reopened**,
 and never closes a company's jobs because its board timed out. Workday descriptions are only
@@ -263,4 +274,6 @@ career pages and other systems (iCIMS, Rippling, Gem, Paylocity, Dayforce) are n
 
 - **E2 (core) Collectors + E4 job lifecycle: done.** Six ATS collectors, new/updated/closed/reopened tracking, pay parsing, remote detection, `collect` and `jobs` commands.
 
-**Next:** company-run career pages via Claude extraction (JS-027), then filtering and scoring (E5). See [BACKLOG.md](docs/BACKLOG.md).
+- **E5 hard gates: done.** Location, pay floor, lane, and title-exclusion rules graded onto every posting; gated default views; `regate`.
+
+**Next (value order, per the requirements audit):** tracker suppression, Claude fit scoring, warm paths, the morning digest. Collection expansion (custom career sites, C-tier) is frozen until those ship. See [BACKLOG.md](docs/BACKLOG.md).

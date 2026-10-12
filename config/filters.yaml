@@ -1,16 +1,22 @@
-# Hard filter rules. These run before any AI call. (Rules are enforced in E5; loaded and validated now.)
+# Hard gates. Deterministic rules applied to every open posting before any AI.
+# Each posting gets a verdict: 'pass', or the rule that killed it. Edit this,
+# then run `jobscout regate` (no re-collect needed).
+# Decisions encoded Oct 11, 2026 from the Requirements Audit.
 
 location:
   allow_remote_us: true
-  # Hybrid is fine within reach of home base
-  hybrid_metros: ["Milwaukee", "Madison", "Chicago"]
+  # Onsite/hybrid only within reach of home. Madison and Chicago onsites excluded
+  # by decision: "not travelling that far."
+  hybrid_metros: ["Milwaukee"]
 
 comp:
-  # Annual base floor in USD. Jobs listing a max below this get dropped.
-  # Jobs with no comp listed are kept.
+  # Annual base floor in USD. A posting whose stated TOP of range is below this
+  # gets dropped. Postings with no pay listed are kept.
   floor_usd: 120000
 
 titles:
+  # A title must contain at least one of these to pass (the lane gate).
+  # Mainframe roles are deliberately in here: one merged list, per decision.
   include_keywords:
     - implementation
     - delivery
@@ -18,16 +24,32 @@ titles:
     - solutions
     - program manager
     - technical program
+    - project manager
     - product owner
+    - product manager
     - customer success
+    - client success
+    - onboarding
     - deployment
     - conversion
+    - cobol
+    - mainframe
+  # A title containing any of these is out, whatever else it says.
   exclude_keywords:
     - intern
     - junior
-    - associate
-    - sales development
+    - early talent
+    - university program
+    - early careers
+    - sales executive
+    - sales representative
     - account executive
+    - business development
+    - pre-sales
+    - presales
+    - renewals
+    - night shift
+    - analyst i
 
 exclusions:
   # Phrases in a job description that knock it out
@@ -36,7 +58,7 @@ exclusions:
     - "relocation required"
     - "p&l ownership"
 
-# A-tier companies surface at a lower fit-score threshold (E5)
+# A-tier companies surface at a lower fit-score threshold (scoring step)
 score_thresholds:
   A: 55
   B: 65

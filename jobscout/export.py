@@ -26,7 +26,7 @@ COLUMNS = [
     ("Tier", 6), ("Company", 24), ("Segment", 24), ("Title", 52), ("Location", 26),
     ("Remote", 9), ("Pay min ($)", 12), ("Pay max ($)", 12), ("Pay source", 11),
     ("Posted", 11), ("First seen", 11), ("New", 6), ("Title match", 11), ("Closed", 11),
-    ("Link", 60),
+    ("Link", 60), ("Gate", 22),
 ]
 
 
@@ -55,7 +55,7 @@ def write_jobs_xlsx(rows, path: Path, new_ids: set[int], filters) -> Path:
             (r["posted_at"] or "")[:10] or None, (r["first_seen_at"] or "")[:10] or None,
             "Yes" if r["id"] in new_ids else "",
             "Yes" if title_matches(r["title"], filters) else "",
-            (r["closed_at"] or "")[:10] or None, r["url"],
+            (r["closed_at"] or "")[:10] or None, r["url"], r["filter_result"],
         ])
         n = ws.max_row
         for c in ws[n]:
@@ -69,7 +69,7 @@ def write_jobs_xlsx(rows, path: Path, new_ids: set[int], filters) -> Path:
             ws.cell(n, 15).font = link
 
     last = ws.max_row
-    table = Table(displayName="Jobs", ref=f"A1:O{last}")
+    table = Table(displayName="Jobs", ref=f"A1:P{last}")
     table.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=True)
     ws.add_table(table)
     ws.freeze_panes = "E2"

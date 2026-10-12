@@ -259,11 +259,12 @@ def collect(
 ) -> None:
     """Pull open postings from every company's job board and track what's new or closed."""
     from jobscout.collect.runner import companies_to_collect, run_collection
+    from jobscout.gates import apply_gates
     from jobscout.http import PoliteClient
 
     s: Settings = ctx.obj.settings
     try:
-        load_filters(s.filters_path)
+        filters = load_filters(s.filters_path)
     except ConfigError as e:
         _fail(str(e))
     conn = connect(s.db_path)
@@ -300,6 +301,9 @@ def collect(
                 run.incr("open", r.saved.open_count)
                 run.incr("new", len(r.saved.new))
                 run.incr("closed", len(r.saved.closed))
+        verdicts = apply_gates(conn, filters)
+        run.incr("gate_pass", verdicts.get("pass", 0))
+        run.incr("gate_out", sum(n for v, n in verdicts.items() if v != "pass"))
     conn.close()
 
     c = run.counts
@@ -307,8 +311,12 @@ def collect(
         f"\n{c['ok']} boards read, {c['open']} open postings, {c['new']} new, {c['closed']} closed"
         f" | {c['error']} errors, {c['unsupported']} not readable yet, {c['review']} need review"
     )
+    top = ", ".join(f"{v} {n}" for v, n in sorted(
+        ((v, n) for v, n in verdicts.items() if v != "pass"), key=lambda x: -x[1])[:4])
+    typer.echo(f"Gates: {c['gate_pass']} pass, {c['gate_out']} filtered out"
+               + (f" (top: {top})" if top else ""))
     if c["new"]:
-        typer.echo("See the new ones: jobscout jobs --new --match")
+        typer.echo("See what passed: jobscout jobs --new   (everything: --all)")
 
 
 def _job_filters():
@@ -323,13 +331,16 @@ def _job_filters():
         tier=typer.Option(None, "--tier", "-t", help="Only this tier (repeatable)."),
         search=typer.Option(None, "--search", "-s", help="Title contains this text."),
         closed=typer.Option(False, "--closed", help="Recently closed postings instead of open."),
+        show_all=typer.Option(False, "--all", "-a",
+                              help="Include postings the hard gates filtered out."),
     )
 
 
 _F = _job_filters()
 
 
-def _query_jobs(s: Settings, new, days, match, remote, company, tier, search, closed):
+def _query_jobs(s: Settings, new, days, match, remote, company, tier, search, closed,
+                show_all=False):
     """Rows for the given filters, plus the set of job ids that are new since the last collect."""
     from jobscout.export import title_matches
 
@@ -342,6 +353,8 @@ def _query_jobs(s: Settings, new, days, match, remote, company, tier, search, cl
            " JOIN companies c ON c.id = j.company_id WHERE c.active = 1")
     params: list = []
     sql += " AND j.closed_at IS NOT NULL" if closed else " AND j.closed_at IS NULL"
+    if not show_all and not closed:
+        sql += " AND j.filter_result = 'pass'"
     if new and last:
         sql += " AND j.first_seen_at >= datetime(?)"
         params.append(last["started_at"])
@@ -382,12 +395,12 @@ def jobs_cmd(
     ctx: typer.Context,
     new: bool = _F["new"], days: int = _F["days"], match: bool = _F["match"],
     remote: bool = _F["remote"], company: list[str] = _F["company"], tier: list[str] = _F["tier"],
-    search: str = _F["search"], closed: bool = _F["closed"],
+    search: str = _F["search"], closed: bool = _F["closed"], show_all: bool = _F["show_all"],
     limit: int = typer.Option(50, "--limit", "-l"),
 ) -> None:
-    """List collected job postings in the terminal."""
+    """List collected job postings in the terminal (gated to 'pass' unless --all)."""
     rows, _, _ = _query_jobs(ctx.obj.settings, new, days, match, remote, company, tier, search,
-                             closed)
+                             closed, show_all=show_all)
     if not rows:
         typer.echo("No postings match.")
         return
@@ -407,7 +420,7 @@ def export(
     ctx: typer.Context,
     new: bool = _F["new"], days: int = _F["days"], match: bool = _F["match"],
     remote: bool = _F["remote"], company: list[str] = _F["company"], tier: list[str] = _F["tier"],
-    search: str = _F["search"], closed: bool = _F["closed"],
+    search: str = _F["search"], closed: bool = _F["closed"], show_all: bool = _F["show_all"],
     out: Path = typer.Option(None, "--out", "-o", help="Where to write (default reports/)."),
     open_file: bool = typer.Option(True, "--open/--no-open", help="Open it when done (macOS)."),
 ) -> None:
@@ -420,7 +433,7 @@ def export(
 
     s: Settings = ctx.obj.settings
     rows, new_ids, filters = _query_jobs(s, new, days, match, remote, company, tier, search,
-                                         closed)
+                                         closed, show_all=show_all)
     if not rows:
         typer.echo("No postings match.")
         return
@@ -429,6 +442,29 @@ def export(
     typer.echo(f"Wrote {len(rows)} postings to {path}")
     if open_file and sys.platform == "darwin":
         subprocess.run(["open", str(path)], check=False)
+
+
+@app.command()
+def regate(ctx: typer.Context) -> None:
+    """Re-apply the hard gates to every open posting (run after editing filters.yaml)."""
+    from jobscout.gates import apply_gates
+
+    s: Settings = ctx.obj.settings
+    try:
+        filters = load_filters(s.filters_path)
+    except ConfigError as e:
+        _fail(str(e))
+    conn = connect(s.db_path)
+    with tracked_run(conn, "regate") as run:
+        verdicts = apply_gates(conn, filters)
+        run.incr("pass", verdicts.get("pass", 0))
+        run.incr("filtered", sum(n for v, n in verdicts.items() if v != "pass"))
+    conn.close()
+    typer.echo(f"{verdicts.get('pass', 0)} pass, "
+               f"{sum(n for v, n in verdicts.items() if v != 'pass')} filtered out:")
+    for v, n in sorted(verdicts.items(), key=lambda x: -x[1]):
+        if v != "pass":
+            typer.echo(f"  {n:>5}  {v}")
 
 
 @app.command()
